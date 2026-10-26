@@ -7,7 +7,6 @@ import connectDB from './config/db.js';
 import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import invoiceRoutes from './routes/invoiceRoutes.js';
-import invoiceRoutes from './routes/invoiceRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
