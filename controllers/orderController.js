@@ -272,7 +272,7 @@ export const updateOrderStatus = async (req, res) => {
 export const kashierWebhook = async (req, res) => {
   try {
     const signature = req.headers['x-kashier-signature'] || req.headers['signature'];
-    const rawPayload = req.body;
+    const rawPayload = req.rawBody || req.body;
 
     // Signature verification when signature header is present
     if (signature) {
