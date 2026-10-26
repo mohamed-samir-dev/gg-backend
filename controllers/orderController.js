@@ -47,11 +47,27 @@ export const createOrder = async (req, res) => {
         return res.status(400).json({ message: `بيانات الكمية أو المنتج غير صالحة: ${item.id}` });
       }
 
-      // Find product by numeric ID field or MongoDB _id
-      const product = await Product.findOne({ id: item.id });
+      // Find product flexibly by numeric ID, string ID, or MongoDB _id
+      const numericId = Number(item.id);
+      let query;
+      if (!isNaN(numericId)) {
+        query = { id: numericId };
+      } else if (item.id && typeof item.id === 'string' && item.id.length === 24) {
+        query = { _id: item.id };
+      } else {
+        query = { id: item.id };
+      }
+
+      let product = await Product.findOne(query);
       
       if (!product) {
-        console.warn(`Product not found with ID: ${item.id}`);
+        console.warn(`Product not found with ID: ${item.id}, attempting fallback search...`);
+        // Fallback: check if id exists as string or number
+        product = await Product.findOne({ $or: [{ id: numericId }, { id: String(item.id) }] });
+      }
+
+      if (!product) {
+        console.warn(`Product still not found with ID: ${item.id}`);
         return res.status(404).json({ message: `المنتج غير موجود: ${item.id}` });
       }
 
