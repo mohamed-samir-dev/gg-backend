@@ -29,20 +29,20 @@ const productSchema = new mongoose.Schema({
     required: [true, 'السعر مطلوب'],
     min: 0,
   },
-  priceSAR: {
+  priceEGP: {
     type: Number,
     min: 0,
     default: function() {
       return this && this.price !== undefined ? this.price : 0;
     },
   },
-  priceEGP: {
+  priceSAR: {
     type: Number,
     min: 0,
   },
   currency: {
     type: String,
-    default: 'SAR',
+    default: 'EGP',
   },
   isPriceVerified: {
     type: Boolean,

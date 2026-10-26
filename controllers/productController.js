@@ -1,12 +1,32 @@
 import Product from '../models/Product.js';
 import cloudinary from '../config/cloudinary.js';
 
-// @desc    Get all products
+export const FERTILIZER_CATEGORIES = ['أسمدة مركبة', 'أسمدة عضوية', 'محسنات تربة', 'عناصر صغرى'];
+
+// @desc    Get all products (fertilizers only by default)
 // @route   GET /api/products
 // @access  Public
 export const getProducts = async (req, res) => {
   try {
-    const products = await Product.find({ isActive: true }).sort({ createdAt: -1 });
+    const { category, search, allProducts } = req.query;
+    const filter = { isActive: true };
+
+    if (allProducts !== 'true') {
+      if (category && category !== 'all') {
+        filter.category = category;
+      } else {
+        // Only return agricultural fertilizer categories
+        filter.category = { $in: FERTILIZER_CATEGORIES };
+      }
+    } else if (category && category !== 'all') {
+      filter.category = category;
+    }
+
+    if (search && search.trim()) {
+      filter.name = { $regex: search.trim(), $options: 'i' };
+    }
+
+    const products = await Product.find(filter).sort({ id: 1, createdAt: 1 });
     res.json(products);
   } catch (error) {
     res.status(500).json({ message: 'خطأ في جلب المنتجات', error: error.message });

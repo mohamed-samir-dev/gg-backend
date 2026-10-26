@@ -29,7 +29,7 @@ const orderSchema = new mongoose.Schema({
     country: {
       type: String,
       required: true,
-      default: 'SA',
+      default: 'EG',
     },
   },
   items: [{
@@ -40,6 +40,7 @@ const orderSchema = new mongoose.Schema({
     },
     name: String,
     price: Number,
+    priceEGP: Number,
     priceSAR: Number,
     qty: {
       type: Number,
@@ -48,9 +49,15 @@ const orderSchema = new mongoose.Schema({
     },
   }],
   pricing: {
-    totalSAR: {
+    totalEGP: {
       type: Number,
       required: true,
+      default: function() {
+        return this.totalLocal || 0;
+      },
+    },
+    totalSAR: {
+      type: Number,
     },
     totalLocal: {
       type: Number,
@@ -59,10 +66,12 @@ const orderSchema = new mongoose.Schema({
     currency: {
       type: String,
       required: true,
+      default: 'EGP',
     },
     exchangeRate: {
       type: Number,
       required: true,
+      default: 1,
     },
   },
   payment: {

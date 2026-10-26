@@ -17,9 +17,8 @@ const products = [
     formula: 'NPK 20-20-20',
     category: 'أسمدة مركبة',
     price: 1000,
-    priceSAR: 1000,
     priceEGP: 1000,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '25 كجم',
     tag: 'اختيار الموسم',
@@ -40,9 +39,8 @@ const products = [
     formula: 'ORGANIC PLUS',
     category: 'أسمدة عضوية',
     price: 500,
-    priceSAR: 500,
     priceEGP: 500,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '20 كجم',
     tag: 'عضوي',
@@ -63,9 +61,8 @@ const products = [
     formula: 'NPK 12-12-36',
     category: 'أسمدة مركبة',
     price: 1800,
-    priceSAR: 1800,
     priceEGP: 1800,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '25 كجم',
     tag: 'تغذية متخصصة',
@@ -86,9 +83,8 @@ const products = [
     formula: 'HUMIC ACID',
     category: 'محسنات تربة',
     price: 1500,
-    priceSAR: 1500,
     priceEGP: 1500,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '10 كجم',
     tag: 'عناية بالجذور',
@@ -109,9 +105,8 @@ const products = [
     formula: 'CALCIUM + B',
     category: 'عناصر صغرى',
     price: 2500,
-    priceSAR: 2500,
     priceEGP: 2500,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '20 لتر',
     tag: 'تركيبة سائلة',
@@ -132,9 +127,8 @@ const products = [
     formula: 'NPK 15-5-30',
     category: 'أسمدة مركبة',
     price: 3500,
-    priceSAR: 3500,
     priceEGP: 3500,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '50 كجم',
     tag: 'عبوة المزارع',
@@ -155,9 +149,8 @@ const products = [
     formula: 'Fe + Mn + Zn',
     category: 'عناصر صغرى',
     price: 1299,
-    priceSAR: 1299,
     priceEGP: 1299,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '5 كجم',
     tag: 'عناصر نادرة',
@@ -178,9 +171,8 @@ const products = [
     formula: 'N 46%',
     category: 'أسمدة مركبة',
     price: 699,
-    priceSAR: 699,
     priceEGP: 699,
-    currency: 'SAR',
+    currency: 'EGP',
     isPriceVerified: true,
     weight: '10 كجم',
     tag: 'تنشيط النمو',
@@ -201,20 +193,20 @@ export const seedProducts = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB Connected');
 
-    console.log('📦 Seeding/updating 8 fertilizer products with SAR pricing...');
+    console.log('📦 Seeding/updating 8 fertilizer products with EGP pricing...');
 
     for (const item of products) {
       const existing = await Product.findOne({ id: item.id });
       if (existing) {
         await Product.updateOne({ id: item.id }, { $set: item });
-        console.log(`  Updated product ${item.id}: ${item.name} (${item.priceSAR} SAR)`);
+        console.log(`  Updated product ${item.id}: ${item.name} (${item.priceEGP} EGP)`);
       } else {
         await Product.create(item);
-        console.log(`  Created product ${item.id}: ${item.name} (${item.priceSAR} SAR)`);
+        console.log(`  Created product ${item.id}: ${item.name} (${item.priceEGP} EGP)`);
       }
     }
 
-    console.log('✅ All 8 fertilizer products seeded successfully in SAR!');
+    console.log('✅ All 8 fertilizer products seeded successfully in EGP!');
     return true;
   } catch (err) {
     console.error('❌ Seeding failed:', err);

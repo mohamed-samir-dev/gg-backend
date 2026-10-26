@@ -1,15 +1,15 @@
 import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import { createKashierSession, getKashierSession, verifyKashierWebhookSignature, STORE_CURRENCY } from '../utils/kashier.js';
-import { toHalalas, fromHalalas, formatSARString } from '../utils/finance.js';
+import { toCents, fromCents, formatEGPString } from '../utils/finance.js';
 
-// @desc    Create new order in SAR
+// @desc    Create new order in EGP
 // @route   POST /api/orders
 // @access  Public
 export const createOrder = async (req, res) => {
   try {
-    const { name, phone, city, address, country = 'SA', paymentMethod, items } = req.body;
-    const idempotencyKey = req.headers['idempotency-key'];
+    const { name, phone, city, address, country = 'EG', paymentMethod, items } = req.body;
+    const idempotencyKey = req.headers['idempotency-key'] || req.body.idempotencyKey;
 
     // Validate required fields
     if (!name || !phone || !city || !address) {
@@ -31,15 +31,15 @@ export const createOrder = async (req, res) => {
         orderId: existingOrder.orderId,
         status: 'duplicate',
         message: 'تم معالجة هذا الطلب مسبقاً',
-        total: existingOrder.pricing.totalSAR,
+        total: existingOrder.pricing.totalEGP ?? existingOrder.pricing.totalLocal ?? existingOrder.pricing.totalSAR,
         totalLocal: existingOrder.pricing.totalLocal,
-        currency: existingOrder.pricing.currency,
+        currency: existingOrder.pricing.currency || 'EGP',
         order: existingOrder,
       });
     }
 
-    // Server-side calculation in SAR using integer Halalas (cents)
-    let totalHalalas = 0;
+    // Server-side calculation in EGP using integer Cents/Piastres
+    let totalCents = 0;
     const orderItems = [];
 
     for (const item of items) {
@@ -62,7 +62,6 @@ export const createOrder = async (req, res) => {
       
       if (!product) {
         console.warn(`Product not found with ID: ${item.id}, attempting fallback search...`);
-        // Fallback: check if id exists as string or number
         product = await Product.findOne({ $or: [{ id: numericId }, { id: String(item.id) }] });
       }
 
@@ -75,26 +74,27 @@ export const createOrder = async (req, res) => {
         return res.status(400).json({ message: `المنتج ${product.name} غير متاح حالياً` });
       }
 
-      // Authoritative SAR price from database
-      const unitPriceSAR = product.priceSAR !== undefined && product.priceSAR !== null
-        ? product.priceSAR
+      // Authoritative EGP price from database
+      const unitPriceEGP = product.priceEGP !== undefined && product.priceEGP !== null
+        ? product.priceEGP
         : product.price;
 
-      const itemHalalas = toHalalas(unitPriceSAR) * item.qty;
-      totalHalalas += itemHalalas;
+      const itemCents = toCents(unitPriceEGP) * item.qty;
+      totalCents += itemCents;
 
       orderItems.push({
         product: product._id,
         name: product.name,
-        price: unitPriceSAR,
-        priceSAR: unitPriceSAR,
+        price: unitPriceEGP,
+        priceEGP: unitPriceEGP,
+        priceSAR: unitPriceEGP, // compatibility
         qty: item.qty,
       });
     }
 
-    const totalSAR = fromHalalas(totalHalalas);
-    const currency = STORE_CURRENCY; // 'SAR'
-    const exchangeRate = 1; // 1 SAR = 1 SAR
+    const totalEGP = fromCents(totalCents);
+    const currency = 'EGP';
+    const exchangeRate = 1;
 
     // Generate unique order ID
     const orderId = `GL-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
@@ -107,12 +107,13 @@ export const createOrder = async (req, res) => {
         phone,
         city,
         address,
-        country: country || 'SA',
+        country: country || 'EG',
       },
       items: orderItems,
       pricing: {
-        totalSAR,
-        totalLocal: totalSAR,
+        totalEGP,
+        totalSAR: totalEGP, // compatibility
+        totalLocal: totalEGP,
         currency,
         exchangeRate,
       },
@@ -120,26 +121,26 @@ export const createOrder = async (req, res) => {
         method: paymentMethod || 'cash_on_delivery',
         status: 'pending',
         kashierCurrency: currency,
-        kashierAmount: totalSAR,
+        kashierAmount: totalEGP,
       },
       idempotencyKey,
     });
 
     const response = {
       orderId: order.orderId,
-      total: totalSAR,
-      totalLocal: totalSAR,
+      total: totalEGP,
+      totalLocal: totalEGP,
       currency,
       status: 'confirmed',
       order: order,
     };
 
-    // Handle Kashier payment session creation
+    // Handle Kashier payment session creation in EGP
     if (paymentMethod === 'kashier') {
       try {
         const kashierSession = await createKashierSession({
           orderId: order.orderId,
-          amount: totalSAR,
+          amount: totalEGP,
           currency,
           customer: {
             name,
@@ -213,13 +214,16 @@ export const verifyOrderPayment = async (req, res) => {
       return res.status(404).json({ message: 'الطلب غير موجود' });
     }
 
+    const total = order.pricing?.totalEGP ?? order.pricing?.totalLocal ?? order.pricing?.totalSAR ?? 0;
+    const currency = order.pricing?.currency || 'EGP';
+
     // If already marked paid
     if (order.payment.status === 'paid') {
       return res.json({
         orderId: order.orderId,
         status: order.payment.status,
-        currency: order.pricing.currency,
-        total: order.pricing.totalSAR,
+        currency,
+        total,
         paidAt: order.payment.paidAt,
       });
     }
@@ -245,8 +249,8 @@ export const verifyOrderPayment = async (req, res) => {
     res.json({
       orderId: order.orderId,
       status: order.payment.status,
-      currency: order.pricing.currency,
-      total: order.pricing.totalSAR,
+      currency,
+      total,
       order,
     });
   } catch (error) {
@@ -305,7 +309,7 @@ export const kashierWebhook = async (req, res) => {
     const status = String(data.status || data.paymentStatus || data.kashierPaymentStatus || req.body.status || '').toUpperCase();
     const transactionId = data.transactionId || data.transactionRef || data.kashierTransactionId || req.body.transactionId;
     const webhookAmount = data.amount !== undefined ? parseFloat(data.amount) : undefined;
-    const webhookCurrency = data.currency ? String(data.currency).toUpperCase() : undefined;
+    const webhookCurrency = data.currency ? String(data.currency).toUpperCase() : 'EGP';
 
     if (!orderId) {
       return res.status(400).json({ message: 'Missing orderId in webhook payload' });
@@ -323,31 +327,14 @@ export const kashierWebhook = async (req, res) => {
       return res.json({ message: 'Order already marked as paid (idempotent)', orderId });
     }
 
-    // Amount & Currency Validation
-    const virtualCurrency = data.virtualCurrency ? String(data.virtualCurrency).toUpperCase() : null;
-    const virtualAmount = data.virtualAmount !== undefined ? parseFloat(data.virtualAmount) : null;
-    
-    // Check currency compatibility
-    if (webhookCurrency && !['SAR', 'SAR_VIRTUAL', 'EGP'].includes(webhookCurrency)) {
-      console.warn(`[Webhook] Unrecognized currency for order ${orderId}: ${webhookCurrency}`);
-      return res.status(400).json({
-        message: `Unsupported webhook currency: ${webhookCurrency}`,
-      });
-    }
+    const orderExpectedTotal = order.pricing.totalEGP ?? order.pricing.totalLocal ?? order.pricing.totalSAR;
 
-    // Check amount: if virtualAmount is available, compare directly to SAR
-    if (virtualAmount !== null) {
-      if (Math.abs(virtualAmount - order.pricing.totalSAR) > 0.05) {
-        console.warn(`[Webhook] Virtual amount mismatch for order ${orderId}: expected ${order.pricing.totalSAR}, got ${virtualAmount}`);
+    // Amount match check (allow slight 0.05 margin)
+    if (webhookAmount !== undefined) {
+      if (Math.abs(webhookAmount - orderExpectedTotal) > 0.05) {
+        console.warn(`[Webhook] Amount mismatch for order ${orderId}: expected ${orderExpectedTotal}, got ${webhookAmount}`);
         return res.status(400).json({
-          message: `Amount mismatch: expected ${order.pricing.totalSAR} SAR, received ${virtualAmount}`,
-        });
-      }
-    } else if (webhookCurrency === 'SAR' && webhookAmount !== undefined) {
-      if (Math.abs(webhookAmount - order.pricing.totalSAR) > 0.05) {
-        console.warn(`[Webhook] Amount mismatch for order ${orderId}: expected ${order.pricing.totalSAR}, got ${webhookAmount}`);
-        return res.status(400).json({
-          message: `Amount mismatch: expected ${order.pricing.totalSAR}, received ${webhookAmount}`,
+          message: `Amount mismatch: expected ${orderExpectedTotal} EGP, received ${webhookAmount}`,
         });
       }
     }
@@ -357,8 +344,8 @@ export const kashierWebhook = async (req, res) => {
       order.payment.status = 'paid';
       order.payment.paidAt = new Date();
       order.payment.kashierTransactionId = transactionId || order.payment.kashierTransactionId;
-      order.payment.kashierCurrency = webhookCurrency || order.pricing.currency;
-      order.payment.kashierAmount = webhookAmount || order.pricing.totalSAR;
+      order.payment.kashierCurrency = webhookCurrency || 'EGP';
+      order.payment.kashierAmount = webhookAmount || orderExpectedTotal;
       order.status = 'processing';
       await order.save();
       console.log(`[Webhook] Order ${orderId} successfully marked as PAID`);
