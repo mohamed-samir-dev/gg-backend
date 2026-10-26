@@ -50,6 +50,15 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({
+    status: 'OK',
+    message: 'Green Line API is running 🚀',
+    version: '1.0.0'
+  });
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'Green Line API is running' });
@@ -67,7 +76,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 // For local development
-if (process.env.NODE_ENV !== 'production') {
+if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`
 🚀 Server running on port ${PORT}
