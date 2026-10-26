@@ -8,10 +8,21 @@ import orderRoutes from './routes/orderRoutes.js';
 // Load env vars
 dotenv.config();
 
-// Connect to database
-connectDB();
-
 const app = express();
+
+// Connect to database on first request (Serverless-friendly)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    res.status(503).json({ 
+      message: 'Database connection failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Service unavailable'
+    });
+  }
+});
 
 // CORS Configuration
 const corsOptions = {
