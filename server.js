@@ -1,44 +1,46 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 
-// Load env vars
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load env vars from backend/.env
+dotenv.config({ path: path.join(__dirname, '.env') });
 
 const app = express();
 
-// Connect to database on first request (Serverless-friendly)
-app.use(async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (error) {
-    console.error('Database connection failed:', error);
-    res.status(503).json({ 
-      message: 'Database connection failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Service unavailable'
-    });
+// 1. CORS Middleware - MUST BE FIRST (handles preflight OPTIONS immediately)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
   }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Idempotency-Key, x-kashier-signature, signature');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
 });
 
-// CORS Configuration
-const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'https://www.lamsa-smartt.com',
-    process.env.APP_URL
-  ].filter(Boolean),
+app.use(cors({
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key']
-};
+  allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'x-kashier-signature', 'signature']
+}));
 
-// Middleware
-app.use(cors(corsOptions));
+// 2. Body Parser Middleware with rawBody support for webhook verification
 app.use(express.json({
   verify: (req, res, buf) => {
     req.rawBody = buf.toString();
@@ -46,22 +48,18 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
+// 3. Connect to Database at startup
+connectDB().catch(err => {
+  console.error('Initial MongoDB connection error:', err.message);
+});
+
+// 4. Routes
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'Green Line API is running 🚀',
-    version: '1.0.0'
-  });
-});
-
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Green Line API is running' });
+  res.json({ status: 'OK', message: 'Green Line API is running', currency: 'SAR' });
 });
 
 // Error handler
@@ -76,12 +74,13 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 // For local development
-if (process.env.NODE_ENV !== 'production' && !process.env.VERCEL) {
+if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
     console.log(`
 🚀 Server running on port ${PORT}
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
-📦 MongoDB: ${process.env.MONGO_URI ? 'Connected' : 'Not configured'}
+📦 MongoDB: ${process.env.MONGO_URI ? 'Configured' : 'Not configured'}
+💵 Currency: SAR (الريال السعودي)
     `);
   });
 }
