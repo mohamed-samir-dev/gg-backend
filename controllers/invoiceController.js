@@ -30,17 +30,13 @@ export const generateInvoice = async (req, res) => {
       return res.status(404).json({ message: 'الطلب غير موجود' });
     }
 
-    // Check if payment is completed
-    if (order.payment.status !== 'paid') {
-      return res.status(400).json({ 
-        message: 'لا يمكن إنشاء فاتورة لطلب غير مدفوع',
-        paymentStatus: order.payment.status 
-      });
-    }
-
     // Generate invoice number if not exists
-    if (!order.invoice.invoiceNumber) {
+    if (!order.invoice?.invoiceNumber) {
+      if (!order.invoice) order.invoice = {};
       order.invoice.invoiceNumber = generateInvoiceNumber(order.orderId, order.createdAt);
+      order.invoice.isGenerated = true;
+      order.invoice.generatedAt = new Date();
+      await order.save();
     }
 
     // Create invoices directory if not exists
@@ -143,7 +139,7 @@ export const generateInvoice = async (req, res) => {
     yPosition += 20;
 
     // Total
-    const totalAmount = order.pricing.totalSAR || order.pricing.totalLocal || order.pricing.totalEGP || 0;
+    const totalAmount = order.pricing.totalEGP || order.pricing.totalLocal || order.pricing.totalSAR || 0;
     doc.fontSize(12).font('Helvetica-Bold');
     doc.text('الإجمالي / Total:', 370, yPosition);
     doc.text(`${totalAmount.toLocaleString()} ${currencyLabel}`, 470, yPosition);

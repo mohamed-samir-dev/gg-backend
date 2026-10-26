@@ -6,6 +6,7 @@ import {
   updateOrderStatus,
   kashierWebhook,
   getAllOrders,
+  deleteOrder,
 } from '../controllers/orderController.js';
 
 const router = express.Router();
@@ -15,7 +16,7 @@ router.route('/')
   .post(createOrder);
 
 router.get('/:orderId', getOrderById);
-router.get('/:orderId/verify-payment', verifyOrderPayment);
+router.delete('/:orderId', deleteOrder);
 router.put('/:orderId/status', updateOrderStatus);
 router.post('/kashier-webhook', kashierWebhook);
 

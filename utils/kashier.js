@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import { formatEGPString } from './finance.js';
 
-export const STORE_CURRENCY = 'SAR';
-export const ALLOWED_CURRENCIES = ['SAR', 'EGP'];
+export const STORE_CURRENCY = 'EGP';
+export const ALLOWED_CURRENCIES = ['EGP', 'SAR'];
 
 /**
  * Verify HMAC-SHA256 signature for incoming Kashier webhooks
@@ -67,8 +67,8 @@ export const createKashierSession = async (orderData) => {
     throw new Error('Kashier credentials not configured');
   }
 
-  // Store and Gateway currency (supports SAR and EGP dynamically)
-  const gatewayCurrency = orderData.currency || process.env.KASHIER_CURRENCY_MODE || 'SAR';
+  // Store and Gateway currency (supports EGP and SAR dynamically)
+  const gatewayCurrency = orderData.currency || process.env.KASHIER_CURRENCY_MODE || 'EGP';
   const numAmount = typeof orderData.amount === 'number' ? orderData.amount : parseFloat(orderData.amount);
   const gatewayAmount = numAmount.toFixed(2);
   const currencyLabel = gatewayCurrency === 'SAR' ? 'ريال سعودي' : 'جنيه مصري';

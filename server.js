@@ -64,7 +64,7 @@ app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', message: 'Green Line API is running', currency: 'SAR' });
+  res.json({ status: 'OK', message: 'Green Line API is running', currency: process.env.KASHIER_CURRENCY_MODE || 'EGP' });
 });
 
 // Error handler
@@ -85,7 +85,7 @@ if (process.env.NODE_ENV !== 'production') {
 🚀 Server running on port ${PORT}
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
 📦 MongoDB: ${process.env.MONGO_URI ? 'Configured' : 'Not configured'}
-💵 Currency: SAR (الريال السعودي)
+💵 Currency: EGP (الجنيه المصري)
     `);
   });
 }

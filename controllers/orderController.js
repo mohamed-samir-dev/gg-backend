@@ -99,11 +99,17 @@ export const createOrder = async (req, res) => {
     }
 
     const totalAmount = parseFloat((totalCents / 100).toFixed(2));
-    const currency = orderCurrency || 'SAR';
+    const currency = orderCurrency || 'EGP';
     const exchangeRate = 1;
 
     // Generate unique order ID
     const orderId = `GL-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+
+    // Auto-generate invoice number immediately for all orders
+    const date = new Date();
+    const dateStr = date.toISOString().slice(0, 10).replace(/-/g, '');
+    const cleanId = orderId.replace(/[^a-zA-Z0-9]/g, '').slice(-6).toUpperCase();
+    const invoiceNumber = `INV-${dateStr}-${cleanId}`;
 
     // Create order in database
     const order = await Order.create({
@@ -128,6 +134,11 @@ export const createOrder = async (req, res) => {
         status: 'pending',
         kashierCurrency: currency,
         kashierAmount: totalAmount,
+      },
+      invoice: {
+        invoiceNumber,
+        isGenerated: true,
+        generatedAt: new Date(),
       },
       idempotencyKey,
     });
@@ -410,6 +421,30 @@ export const getAllOrders = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       message: 'خطأ في جلب الطلبات',
+      error: error.message,
+    });
+  }
+};
+
+// @desc    Delete order by orderId or _id
+// @route   DELETE /api/orders/:orderId
+// @access  Private/Admin
+export const deleteOrder = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const query = orderId.match(/^[0-9a-fA-F]{24}$/)
+      ? { $or: [{ _id: orderId }, { orderId }] }
+      : { orderId };
+
+    const deleted = await Order.findOneAndDelete(query);
+    if (!deleted) {
+      return res.status(404).json({ message: 'الطلب غير موجود' });
+    }
+
+    res.json({ success: true, message: 'تم حذف الطلب بنجاح' });
+  } catch (error) {
+    res.status(500).json({
+      message: 'خطأ في حذف الطلب',
       error: error.message,
     });
   }
