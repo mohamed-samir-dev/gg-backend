@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { formatSARString } from './finance.js';
 
 export const STORE_CURRENCY = 'SAR';
-export const ALLOWED_CURRENCIES = ['SAR', 'EGP'];
+export const ALLOWED_CURRENCIES = ['SAR', 'SAR_VIRTUAL', 'EGP'];
 
 /**
  * Verify HMAC-SHA256 signature for incoming Kashier webhooks
@@ -47,6 +47,7 @@ export const verifyKashierWebhookSignature = (rawPayload, signature) => {
 
 /**
  * Create a Payment Session with Kashier
+ * Supports 'SAR' (direct acquiring), 'SAR_VIRTUAL' (Kashier virtual conversion), or 'EGP'
  * @param {object} orderData
  * @returns {Promise<{ sessionUrl: string, sessionId: string, currency: string, amount: string }>}
  */
@@ -55,6 +56,7 @@ export const createKashierSession = async (orderData) => {
   const apiKey = process.env.KASHIER_API_KEY;
   const secretKey = process.env.KASHIER_SECRET_KEY;
   const mode = process.env.KASHIER_MODE || 'live';
+  const currencyMode = (process.env.KASHIER_CURRENCY_MODE || 'SAR_VIRTUAL').toUpperCase();
   let appUrl = process.env.APP_URL || 'https://www.lamsa-smartt.com';
 
   // Kashier URL validator requires a valid domain with a dot (localhost is rejected by Kashier API)
@@ -67,10 +69,9 @@ export const createKashierSession = async (orderData) => {
     throw new Error('Kashier credentials not configured');
   }
 
-  const currency = (orderData.currency || STORE_CURRENCY).toUpperCase();
-  if (!ALLOWED_CURRENCIES.includes(currency)) {
-    throw new Error(`Currency ${currency} is not supported. Allowed: ${ALLOWED_CURRENCIES.join(', ')}`);
-  }
+  // If merchant has direct SAR acquiring activated with Kashier, use 'SAR'
+  // Otherwise use 'SAR_VIRTUAL' so Kashier card processing does not 404/400 at Egyptian bank switch
+  const gatewayCurrency = currencyMode === 'SAR' ? 'SAR' : (currencyMode === 'EGP' ? 'EGP' : 'SAR_VIRTUAL');
 
   const formattedAmount = formatSARString(orderData.amount);
 
@@ -81,13 +82,13 @@ export const createKashierSession = async (orderData) => {
   const payload = {
     merchantId,
     amount: formattedAmount,
-    currency,
+    currency: gatewayCurrency,
     order: orderData.orderId,
     type: 'one-time',
     merchantRedirect: `${appUrl}/?paymentStatus=SUCCESS&orderId=${orderData.orderId}`,
     display: 'ar',
     allowedMethods: 'card,wallet',
-    description: `طلب ${orderData.orderId} - جرين لاين (${formattedAmount} ${currency})`,
+    description: `طلب ${orderData.orderId} - جرين لاين (${formattedAmount} SAR)`,
     customer: {
       email: orderData.customer?.email || `customer-${orderData.customer?.phone || Date.now()}@temp.kashier.local`,
       reference: orderData.customer?.phone || String(Date.now()),
@@ -96,8 +97,8 @@ export const createKashierSession = async (orderData) => {
       metaData: {
         customerName: orderData.customer.name,
         phone: orderData.customer.phone || '',
-        currency,
-        amount: formattedAmount,
+        storeCurrency: 'SAR',
+        storeAmount: formattedAmount,
       },
     }),
   };
@@ -128,8 +129,10 @@ export const createKashierSession = async (orderData) => {
   return {
     sessionUrl: sessionData.sessionUrl,
     sessionId: sessionData._id || sessionData.sessionId,
-    currency,
+    currency: gatewayCurrency,
     amount: formattedAmount,
+    settlementCurrency: sessionData.paymentParams?.currency || gatewayCurrency,
+    settlementAmount: sessionData.paymentParams?.amount || formattedAmount,
   };
 };
 

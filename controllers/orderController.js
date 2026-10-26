@@ -324,20 +324,30 @@ export const kashierWebhook = async (req, res) => {
     }
 
     // Amount & Currency Validation
-    if (webhookCurrency && webhookCurrency !== order.pricing.currency) {
-      console.warn(`[Webhook] Currency mismatch for order ${orderId}: expected ${order.pricing.currency}, got ${webhookCurrency}`);
+    const virtualCurrency = data.virtualCurrency ? String(data.virtualCurrency).toUpperCase() : null;
+    const virtualAmount = data.virtualAmount !== undefined ? parseFloat(data.virtualAmount) : null;
+    
+    // Check currency compatibility
+    if (webhookCurrency && !['SAR', 'SAR_VIRTUAL', 'EGP'].includes(webhookCurrency)) {
+      console.warn(`[Webhook] Unrecognized currency for order ${orderId}: ${webhookCurrency}`);
       return res.status(400).json({
-        message: `Currency mismatch: expected ${order.pricing.currency}, received ${webhookCurrency}`,
+        message: `Unsupported webhook currency: ${webhookCurrency}`,
       });
     }
 
-    if (webhookAmount !== undefined) {
-      const expectedAmount = order.pricing.totalSAR;
-      // Allow +/- 0.05 tolerance for rounding
-      if (Math.abs(webhookAmount - expectedAmount) > 0.05) {
-        console.warn(`[Webhook] Amount mismatch for order ${orderId}: expected ${expectedAmount}, got ${webhookAmount}`);
+    // Check amount: if virtualAmount is available, compare directly to SAR
+    if (virtualAmount !== null) {
+      if (Math.abs(virtualAmount - order.pricing.totalSAR) > 0.05) {
+        console.warn(`[Webhook] Virtual amount mismatch for order ${orderId}: expected ${order.pricing.totalSAR}, got ${virtualAmount}`);
         return res.status(400).json({
-          message: `Amount mismatch: expected ${expectedAmount}, received ${webhookAmount}`,
+          message: `Amount mismatch: expected ${order.pricing.totalSAR} SAR, received ${virtualAmount}`,
+        });
+      }
+    } else if (webhookCurrency === 'SAR' && webhookAmount !== undefined) {
+      if (Math.abs(webhookAmount - order.pricing.totalSAR) > 0.05) {
+        console.warn(`[Webhook] Amount mismatch for order ${orderId}: expected ${order.pricing.totalSAR}, got ${webhookAmount}`);
+        return res.status(400).json({
+          message: `Amount mismatch: expected ${order.pricing.totalSAR}, received ${webhookAmount}`,
         });
       }
     }
