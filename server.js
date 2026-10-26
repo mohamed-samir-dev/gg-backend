@@ -61,10 +61,6 @@ app.use('/api/invoices', invoiceRoutes);
 
 // Serve static invoice files
 app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
-app.use('/api/invoices', invoiceRoutes);
-
-// Serve static invoice files
-app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
 
 // Health check
 app.get('/health', (req, res) => {
