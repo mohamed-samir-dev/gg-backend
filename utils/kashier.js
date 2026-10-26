@@ -1,8 +1,8 @@
 import crypto from 'crypto';
 import { formatEGPString } from './finance.js';
 
-export const STORE_CURRENCY = 'EGP';
-export const ALLOWED_CURRENCIES = ['EGP'];
+export const STORE_CURRENCY = 'SAR';
+export const ALLOWED_CURRENCIES = ['SAR', 'EGP'];
 
 /**
  * Verify HMAC-SHA256 signature for incoming Kashier webhooks
@@ -67,9 +67,11 @@ export const createKashierSession = async (orderData) => {
     throw new Error('Kashier credentials not configured');
   }
 
-  // Store and Gateway currency is purely EGP
-  const gatewayCurrency = 'EGP';
-  const gatewayAmount = formatEGPString(orderData.amount);
+  // Store and Gateway currency (supports SAR and EGP dynamically)
+  const gatewayCurrency = orderData.currency || process.env.KASHIER_CURRENCY_MODE || 'SAR';
+  const numAmount = typeof orderData.amount === 'number' ? orderData.amount : parseFloat(orderData.amount);
+  const gatewayAmount = numAmount.toFixed(2);
+  const currencyLabel = gatewayCurrency === 'SAR' ? 'ريال سعودي' : 'جنيه مصري';
 
   const apiUrl = mode === 'live'
     ? 'https://api.kashier.io/v3/payment/sessions'
@@ -84,7 +86,7 @@ export const createKashierSession = async (orderData) => {
     merchantRedirect: `${appUrl}/?paymentStatus=SUCCESS&orderId=${orderData.orderId}`,
     display: 'ar',
     allowedMethods: 'card,wallet',
-    description: `طلب ${orderData.orderId} - جرين لاين (${gatewayAmount} جنيه مصري)`,
+    description: `طلب ${orderData.orderId} - جرين لاين (${gatewayAmount} ${currencyLabel})`,
     customer: {
       email: orderData.customer?.email || `customer-${orderData.customer?.phone || Date.now()}@temp.kashier.local`,
       reference: orderData.customer?.phone || String(Date.now()),
@@ -92,7 +94,7 @@ export const createKashierSession = async (orderData) => {
     metaData: {
       ...(orderData.customer?.name && { customerName: orderData.customer.name }),
       ...(orderData.customer?.phone && { phone: orderData.customer.phone }),
-      storeCurrency: 'EGP',
+      storeCurrency: gatewayCurrency,
       storeAmount: gatewayAmount,
       gatewayCurrency: gatewayCurrency,
       gatewayAmount: gatewayAmount,
@@ -127,7 +129,7 @@ export const createKashierSession = async (orderData) => {
     sessionId: sessionData._id || sessionData.sessionId,
     currency: gatewayCurrency,
     amount: gatewayAmount,
-    storeCurrency: 'EGP',
+    storeCurrency: gatewayCurrency,
     storeAmount: gatewayAmount,
     settlementCurrency: sessionData.paymentParams?.currency || gatewayCurrency,
     settlementAmount: sessionData.paymentParams?.amount || gatewayAmount,

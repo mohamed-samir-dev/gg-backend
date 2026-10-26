@@ -87,9 +87,24 @@ const orderSchema = new mongoose.Schema({
     },
     kashierSessionId: String,
     kashierTransactionId: String,
+    kashierOrderReference: String,
     kashierCurrency: String,
     kashierAmount: Number,
+    kashierCardBrand: String, // مدى، فيزا، ماستركارد
+    kashierCardLast4: String, // آخر 4 أرقام من البطاقة
+    kashierPaymentMethod: String, // card, wallet, apple_pay, etc.
+    kashierMerchantOrderId: String,
+    kashierRawResponse: mongoose.Schema.Types.Mixed, // كامل الرد من كاشير للرجوع إليه
     paidAt: Date,
+  },
+  invoice: {
+    invoiceNumber: String, // رقم الفاتورة الفريد
+    invoiceUrl: String, // رابط الفاتورة PDF
+    isGenerated: {
+      type: Boolean,
+      default: false,
+    },
+    generatedAt: Date,
   },
   status: {
     type: String,

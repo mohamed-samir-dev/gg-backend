@@ -6,6 +6,8 @@ import { fileURLToPath } from 'url';
 import connectDB from './config/db.js';
 import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
+import invoiceRoutes from './routes/invoiceRoutes.js';
+import invoiceRoutes from './routes/invoiceRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,6 +58,14 @@ connectDB().catch(err => {
 // 4. Routes
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/invoices', invoiceRoutes);
+
+// Serve static invoice files
+app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
+app.use('/api/invoices', invoiceRoutes);
+
+// Serve static invoice files
+app.use('/invoices', express.static(path.join(__dirname, 'invoices')));
 
 // Health check
 app.get('/health', (req, res) => {

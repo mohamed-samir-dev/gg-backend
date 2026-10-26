@@ -38,9 +38,10 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Server-side calculation in EGP using integer Cents/Piastres
+    // Server-side calculation supporting SAR and EGP
     let totalCents = 0;
     const orderItems = [];
+    let orderCurrency = req.body.currency;
 
     for (const item of items) {
       if (!item.id || !Number.isInteger(item.qty) || item.qty <= 0) {
@@ -74,26 +75,31 @@ export const createOrder = async (req, res) => {
         return res.status(400).json({ message: `المنتج ${product.name} غير متاح حالياً` });
       }
 
-      // Authoritative EGP price from database
-      const unitPriceEGP = product.priceEGP !== undefined && product.priceEGP !== null
-        ? product.priceEGP
-        : product.price;
+      // If product has currency SAR or client requested SAR, use SAR
+      const isSARItem = product.currency === 'SAR' || orderCurrency === 'SAR';
+      if (isSARItem) {
+        orderCurrency = 'SAR';
+      }
 
-      const itemCents = toCents(unitPriceEGP) * item.qty;
+      const unitPrice = isSARItem
+        ? (product.priceSAR !== undefined && product.priceSAR !== null ? product.priceSAR : product.price)
+        : (product.priceEGP !== undefined && product.priceEGP !== null ? product.priceEGP : product.price);
+
+      const itemCents = Math.round(unitPrice * 100) * item.qty;
       totalCents += itemCents;
 
       orderItems.push({
         product: product._id,
         name: product.name,
-        price: unitPriceEGP,
-        priceEGP: unitPriceEGP,
-        priceSAR: unitPriceEGP, // compatibility
+        price: unitPrice,
+        priceEGP: product.priceEGP ?? unitPrice,
+        priceSAR: product.priceSAR ?? unitPrice,
         qty: item.qty,
       });
     }
 
-    const totalEGP = fromCents(totalCents);
-    const currency = 'EGP';
+    const totalAmount = parseFloat((totalCents / 100).toFixed(2));
+    const currency = orderCurrency || 'SAR';
     const exchangeRate = 1;
 
     // Generate unique order ID
@@ -107,13 +113,13 @@ export const createOrder = async (req, res) => {
         phone,
         city,
         address,
-        country: country || 'EG',
+        country: country || (currency === 'SAR' ? 'SA' : 'EG'),
       },
       items: orderItems,
       pricing: {
-        totalEGP,
-        totalSAR: totalEGP, // compatibility
-        totalLocal: totalEGP,
+        totalEGP: totalAmount,
+        totalSAR: totalAmount,
+        totalLocal: totalAmount,
         currency,
         exchangeRate,
       },
@@ -121,26 +127,26 @@ export const createOrder = async (req, res) => {
         method: paymentMethod || 'cash_on_delivery',
         status: 'pending',
         kashierCurrency: currency,
-        kashierAmount: totalEGP,
+        kashierAmount: totalAmount,
       },
       idempotencyKey,
     });
 
     const response = {
       orderId: order.orderId,
-      total: totalEGP,
-      totalLocal: totalEGP,
+      total: totalAmount,
+      totalLocal: totalAmount,
       currency,
       status: 'confirmed',
       order: order,
     };
 
-    // Handle Kashier payment session creation in EGP
+    // Handle Kashier payment session creation
     if (paymentMethod === 'kashier') {
       try {
         const kashierSession = await createKashierSession({
           orderId: order.orderId,
-          amount: totalEGP,
+          amount: totalAmount,
           currency,
           customer: {
             name,
@@ -214,8 +220,8 @@ export const verifyOrderPayment = async (req, res) => {
       return res.status(404).json({ message: 'الطلب غير موجود' });
     }
 
-    const total = order.pricing?.totalEGP ?? order.pricing?.totalLocal ?? order.pricing?.totalSAR ?? 0;
-    const currency = order.pricing?.currency || 'EGP';
+    const total = order.pricing?.totalSAR ?? order.pricing?.totalLocal ?? order.pricing?.totalEGP ?? 0;
+    const currency = order.pricing?.currency || 'SAR';
 
     // If already marked paid
     if (order.payment.status === 'paid') {
@@ -310,6 +316,12 @@ export const kashierWebhook = async (req, res) => {
     const transactionId = data.transactionId || data.transactionRef || data.kashierTransactionId || req.body.transactionId;
     const webhookAmount = data.amount !== undefined ? parseFloat(data.amount) : undefined;
     const webhookCurrency = data.currency ? String(data.currency).toUpperCase() : 'EGP';
+    
+    // Extract additional payment details from Kashier
+    const cardBrand = data.cardBrand || data.card_brand || data.cardScheme;
+    const cardLast4 = data.cardLast4 || data.card_last4 || data.maskedCard;
+    const paymentMethod = data.paymentMethod || data.payment_method || 'card';
+    const merchantOrderId = data.merchantOrderId || data.merchant_order_id;
 
     if (!orderId) {
       return res.status(400).json({ message: 'Missing orderId in webhook payload' });
@@ -327,14 +339,15 @@ export const kashierWebhook = async (req, res) => {
       return res.json({ message: 'Order already marked as paid (idempotent)', orderId });
     }
 
-    const orderExpectedTotal = order.pricing.totalEGP ?? order.pricing.totalLocal ?? order.pricing.totalSAR;
+    const orderExpectedTotal = order.pricing?.totalSAR ?? order.pricing?.totalLocal ?? order.pricing?.totalEGP;
+    const orderCurrency = order.pricing?.currency || 'SAR';
 
     // Amount match check (allow slight 0.05 margin)
     if (webhookAmount !== undefined) {
       if (Math.abs(webhookAmount - orderExpectedTotal) > 0.05) {
         console.warn(`[Webhook] Amount mismatch for order ${orderId}: expected ${orderExpectedTotal}, got ${webhookAmount}`);
         return res.status(400).json({
-          message: `Amount mismatch: expected ${orderExpectedTotal} EGP, received ${webhookAmount}`,
+          message: `Amount mismatch: expected ${orderExpectedTotal} ${orderCurrency}, received ${webhookAmount}`,
         });
       }
     }
@@ -344,13 +357,35 @@ export const kashierWebhook = async (req, res) => {
       order.payment.status = 'paid';
       order.payment.paidAt = new Date();
       order.payment.kashierTransactionId = transactionId || order.payment.kashierTransactionId;
-      order.payment.kashierCurrency = webhookCurrency || 'EGP';
+      order.payment.kashierCurrency = webhookCurrency || orderCurrency;
       order.payment.kashierAmount = webhookAmount || orderExpectedTotal;
+      order.payment.kashierCardBrand = cardBrand;
+      order.payment.kashierCardLast4 = cardLast4;
+      order.payment.kashierPaymentMethod = paymentMethod;
+      order.payment.kashierMerchantOrderId = merchantOrderId;
+      order.payment.kashierOrderReference = orderId;
+      order.payment.kashierRawResponse = req.body; // Store full webhook payload
       order.status = 'processing';
       await order.save();
       console.log(`[Webhook] Order ${orderId} successfully marked as PAID`);
+      
+      // Auto-generate invoice after successful payment
+      try {
+        if (!order.invoice.invoiceNumber) {
+          const date = new Date(order.createdAt);
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          order.invoice.invoiceNumber = `INV-${year}${month}${day}-${order.orderId}`;
+          await order.save();
+          console.log(`[Webhook] Invoice number generated: ${order.invoice.invoiceNumber}`);
+        }
+      } catch (invoiceError) {
+        console.error('[Webhook] Failed to generate invoice number:', invoiceError);
+      }
     } else if (status === 'FAILURE' || status === 'FAILED' || status === 'DECLINED') {
       order.payment.status = 'failed';
+      order.payment.kashierRawResponse = req.body;
       await order.save();
       console.log(`[Webhook] Order ${orderId} payment marked as FAILED`);
     }
