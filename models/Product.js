@@ -33,7 +33,7 @@ const productSchema = new mongoose.Schema({
     type: Number,
     min: 0,
     default: function() {
-      return this.price;
+      return this && this.price !== undefined ? this.price : 0;
     },
   },
   priceEGP: {

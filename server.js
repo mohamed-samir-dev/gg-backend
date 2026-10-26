@@ -51,10 +51,16 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`
 🚀 Server running on port ${PORT}
 🌍 Environment: ${process.env.NODE_ENV || 'development'}
 📦 MongoDB: ${process.env.MONGO_URI ? 'Connected' : 'Not configured'}
-  `);
-});
+    `);
+  });
+}
+
+// Export for Vercel
+export default app;

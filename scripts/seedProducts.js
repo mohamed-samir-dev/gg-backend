@@ -139,36 +139,37 @@ const seedProducts = async () => {
     await mongoose.connect(process.env.MONGO_URI);
     console.log('✅ MongoDB Connected');
 
-    // Clear existing products
-    await Product.deleteMany({});
-    console.log('🗑️  Cleared existing products');
+    // Safe upsert without deleting existing documents
+    console.log('\n📦 Seeding/updating fertilizer products with SAR pricing...\n');
 
-    console.log('\n📤 Uploading images to Cloudinary...\n');
-
-    // Upload images and create products
     for (const productData of products) {
       try {
-        // For now, we'll use placeholder images
-        // You'll need to upload the actual images from the old project
         const placeholderImage = `https://via.placeholder.com/800x800/38694c/ffffff?text=${encodeURIComponent(productData.nameEn)}`;
         
-        const product = await Product.create({
+        const updateData = {
           ...productData,
+          priceSAR: productData.price,
+          currency: 'SAR',
+          isPriceVerified: true,
           image: {
             url: placeholderImage,
             publicId: `placeholder-${productData.nameEn.toLowerCase().replace(/\s+/g, '-')}`,
           },
-        });
+        };
 
-        console.log(`✅ Created: ${product.name}`);
+        await Product.findOneAndUpdate(
+          { id: productData.id },
+          { $set: updateData },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+
+        console.log(`✅ Upserted product ${productData.id}: ${productData.name} (${productData.price} SAR)`);
       } catch (error) {
-        console.error(`❌ Failed to create ${productData.name}:`, error.message);
+        console.error(`❌ Failed to upsert ${productData.name}:`, error.message);
       }
     }
 
-    console.log('\n✅ Products seeded successfully!');
-    console.log('\n⚠️  Note: Placeholder images used. Upload real images via the API.\n');
-    
+    console.log('\n✅ Products seeded/updated successfully with SAR pricing!\n');
     process.exit(0);
   } catch (error) {
     console.error('❌ Error:', error);
